@@ -34,8 +34,17 @@ optional_check() {
   fi
 }
 
-run_check 'Ubuntu Server 26.04' bash -c '. /etc/os-release && [[ "$ID" == ubuntu && "$VERSION_ID" == 26.04 ]]'
-run_check 'system clock synchronized' bash -c '[[ "$(timedatectl show -p NTPSynchronized --value)" == yes ]]'
+is_ubuntu_2604() {
+  . /etc/os-release
+  [[ "$ID" == ubuntu && "$VERSION_ID" == 26.04 ]]
+}
+
+is_time_synchronized() {
+  [[ "$(timedatectl show -p NTPSynchronized --value)" == yes ]]
+}
+
+run_check 'Ubuntu Server 26.04' is_ubuntu_2604
+run_check 'system clock synchronized' is_time_synchronized
 run_check 'Tailscale daemon active' systemctl is-active --quiet tailscaled
 run_check 'Tailscale connected' python3 -c 'import json, subprocess, sys; state=json.loads(subprocess.check_output(["tailscale", "status", "--json"]))["BackendState"]; sys.exit(0 if state == "Running" else 1)'
 run_check 'Docker daemon active' systemctl is-active --quiet docker

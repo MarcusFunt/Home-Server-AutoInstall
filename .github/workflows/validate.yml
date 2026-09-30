@@ -36,7 +36,10 @@ jobs:
 
       - name: Lint YAML, Ansible, and shell
         run: |
-          git ls-files -z -- '*.yaml' '*.yml' '*.yaml.example' | xargs -0 yamllint --config-file .yamllint
+          git ls-files -z -- \
+            '*.yaml' \
+            '*.yml' \
+            '*.yaml.example' | xargs -0 yamllint --config-file .yamllint
           ansible-lint ansible/playbooks/site.yml
           shellcheck scripts/*.sh
 
