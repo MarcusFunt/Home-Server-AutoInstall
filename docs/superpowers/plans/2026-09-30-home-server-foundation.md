@@ -38,7 +38,7 @@
 | Hardware facts | Collect after install with a local inventory script; do not require manual transcription. |
 | BIOS power-restore setting | Ask for a physical BIOS check later if software cannot read it. |
 | Backup target and retention | Ask before migrating production data, not before the blank OS installation. |
-| SSH key | Use Tailscale SSH initially. Ask for a public key only if ordinary SSH outside Tailscale is later required. |
+| SSH key | If you have a public key, select or enter it during USB setup; if not, continue with Tailscale SSH. Never copy a private key to the USB. |
 | Remote desktop method | Start by validating XFCE plus xrdp as the lightweight full-session option; keep access private to the tailnet. |
 
 ## Global Constraints
@@ -144,6 +144,7 @@
 - Verify the ISO hash against Canonical's published checksum.
 - Test that the builder refuses a non-removable target, a missing target, and a confirmation string that does not match the selected USB device.
 - Test hostname generation for permitted characters and length; verify the printed hostname matches the hostname in the generated seed.
+- If an SSH public key is provided, copy only that public key to the installer seed; never copy a private key.
 - Ensure output contains no Wi-Fi password, Tailscale key, age private key, or SSH private key.
 
 **Done when:** A verified installer USB is written only after explicit USB-device confirmation, and the generated hostname is shown to the user.
@@ -162,6 +163,7 @@
 - Make wired Ethernet DHCP the default. If the user chooses wireless, let the target-side network screen request the SSID and password; do not bake those into the committed template.
 - Ask the user to choose and confirm the installation disk on the physical machine. Show enough information to distinguish drives; if two candidates are ambiguous, stop and provide a serial/model listing rather than guess.
 - Ask for the Linux user and password on the local installer UI. Do not print, log, or commit the password. Test the exact current Subiquity flow to ensure credentials are not embedded in the USB seed.
+- Install the OpenSSH server. If the user supplies a public SSH key, add only that public key; otherwise keep Tailscale SSH as the remote CLI path.
 - Install only the minimal Ubuntu Server base. Install host services, desktop, and GPU software later through Ansible.
 - If the current release's UI cannot safely collect a needed value, make the installer abort with a clear instruction; do not silently switch to unattended defaults.
 
