@@ -1,63 +1,83 @@
-# Reproducible Home Server Implementation Plan
+# Home Server Minimal Bootstrap and Implementation Plan
 
 > **For agentic workers:** Use the executing-plans workflow and complete one task at a time. Keep each task reviewable; do not deploy until its gates are satisfied.
 
-**Goal:** Turn the GTX 1070 computer into a reproducible Ubuntu home server with verified remote administration, LAN access for local integrations, containerized workloads, monitoring, and tested off-server recovery.
+**Goal:** Install and configure the GTX 1070 computer as a rebuildable home server with a full remote desktop, reliable tailnet administration, local LAN integration, monitored container services, and tested off-server recovery.
 
-**Architecture:** Ubuntu Server 26.04 LTS is installed from a guarded Autoinstall image and configured idempotently with Ansible. Docker Compose runs pinned services with persistent data under /srv; Tailscale provides remote administration while local devices communicate over the physical LAN. Cockpit and Portainer provide administration, Beszel and Uptime Kuma provide monitoring, and Restic provides off-server backups.
+**Architecture:** A USB builder runs on the user's trusted computer, generates and displays a random hostname, verifies the official installer image, and writes a guarded Ubuntu Autoinstall USB. The installer pauses on the target machine for the drive, identity, and network questions that require human input; after first boot, a local bootstrap command records discoverable machine details and asks only for unresolved interactive choices. Ansible then configures Ubuntu Server, Tailscale, Docker, the GTX 1070, a lightweight remote desktop, administration, monitoring, and backups.
 
-**Tech Stack:** Ubuntu Autoinstall, Ansible, Docker Engine and Compose, NVIDIA proprietary driver and Container Toolkit for Pascal, Tailscale, Cockpit, Portainer, Beszel, Uptime Kuma, SOPS/age, Restic/Restic Profile, GitHub Actions.
+**Tech Stack:** Ubuntu Server 26.04 LTS, Ubuntu Autoinstall/Subiquity, Ansible, Docker Engine and Compose, NVIDIA proprietary Pascal driver and Container Toolkit, Tailscale, XFCE with xrdp as the first desktop candidate, Cockpit, Portainer, Beszel, Uptime Kuma, SOPS/age, Restic/Restic Profile.
 
-**Spec:** README.md, docs/architecture.md, docs/implementation-plan.md, docs/hardware-inventory.md, docs/security-and-secrets.md, docs/operations.md, docs/recovery.md.
+**Spec:** README.md, docs/architecture.md, docs/implementation-plan.md, docs/hardware-inventory.md, docs/security-and-secrets.md, docs/operations.md, docs/recovery.md, and the user decisions recorded in this plan.
+
+## Confirmed decisions
+
+- Target computer is not yet installed or configured as a server; there is no existing server deployment to migrate.
+- Hardware budget: 8 GiB system RAM and a GTX 1070 with 8 GiB VRAM.
+- Sleep and suspend must be disabled.
+- Hostname is unimportant; generate a random one during USB creation and show it before writing the USB.
+- A full graphical remote desktop is a key requirement. Cockpit and Portainer alone do not satisfy it.
+- Use the wired LAN for local services and Home Assistant Green. Use Tailscale for remote administration.
+- Keep Home Assistant on Home Assistant Green.
+- Use Portainer as the Docker management UI. Current main-branch docs still say Arcane and need to be reconciled.
+- Use an interactive first-time setup for details that are not fixed or cannot be detected. Do not make the user transcribe ordinary hardware facts into Git.
 
 ## Global Constraints
 
-- Keep the Ansible safety flag false until commissioning and acceptance gates are complete.
-- Never use a guessed disk target; match the reviewed boot-drive serial or stable device ID.
+- Require interactive target-disk selection and confirmation on the server. Never silently choose the largest disk or erase an unconfirmed device.
+- Generate the hostname during USB creation, print it in the builder output, and include it in the installer seed.
+- Prefer wired Ethernet with DHCP. Ask for Wi-Fi credentials only if Wi-Fi is actually needed.
+- Run Tailscale enrollment interactively from the server console; do not put a reusable Tailscale key on the USB.
+- Collect hardware and network facts on the target machine after installation. Store detailed serial numbers, MAC addresses, local IPs, and inventory reports locally, outside public Git.
+- Install a lightweight full desktop and RDP service; expose RDP only through Tailscale or an explicitly chosen trusted LAN.
+- Design for 8 GiB system RAM. Measure memory pressure with the desktop and baseline services running before approving additional workloads.
+- Disable sleep, suspend, hibernation, and hybrid sleep through managed configuration.
 - Keep management services private; do not add public port forwarding.
-- Use Tailscale for remote administration and the server's wired LAN address for local integrations such as Home Assistant Green.
-- Keep Home Assistant on Home Assistant Green.
-- Pin software and image versions; a candidate version is not host compatibility evidence.
-- Keep passwords, age private keys, backup credentials, Tailscale reusable auth keys, and rendered Autoinstall data out of Git.
-- Do not change SSH, firewall, routing, storage, kernel, Docker, or NVIDIA remotely until an alternate access path is verified.
-- Run lint, syntax, Compose validation, secret scanning, and applicable host acceptance checks before each review.
+- Pin software versions and container images. Candidate releases are not compatibility evidence.
+- Keep passwords, private keys, age keys, backup credentials, and rendered installer data out of tracked files.
 - Do not migrate production data until an off-server backup has passed a restore test.
+- Keep the deployment guard in place until the full post-reboot acceptance gate passes.
 
 ## Review Focus
 
-- A wrong disk identifier could erase the wrong drive; test that unknown and mismatched IDs abort before installation.
-- A missing Tailscale connection could lock out a headless server; prove local break-glass access and a second remote connection before restricting SSH or firewall rules.
-- Docker-published ports can bypass assumptions about UFW; inspect effective bindings and test from LAN, tailnet, and an external network.
-- GTX 1070 support depends on the exact Ubuntu kernel, NVIDIA driver, toolkit, and container; test the complete pinned tuple before service deployment and again after reboot.
-- A successful Restic snapshot does not prove recovery; restore application data and configuration to a temporary location and verify that they can be opened.
+- Autoinstall can default to the largest disk for common layouts; verify the target disk is deliberately selected and confirmed on the physical machine.
+- Identity and Wi-Fi prompts must not leave passwords in the public repo, USB seed, shell history, or logs.
+- A full desktop, Docker, and workloads share only 8 GiB of system RAM; test their combined peak use and check for OOM events.
+- RDP must work from the intended remote client through Tailscale while remaining unavailable from the public internet.
+- A successful Restic snapshot is insufficient; restore and open representative service data in a temporary directory.
 
 ---
 
-## Task 1: Commission the hardware and freeze decisions
+## Task 1: Reconcile the repository with confirmed choices
 
 **Files:**
-- Modify: docs/hardware-inventory.md
-- Modify: docs/architecture.md
 - Modify: README.md
-- Create: docs/commissioning-record.md
+- Modify: AGENTS.md
+- Modify: docs/architecture.md
+- Modify: docs/implementation-plan.md
+- Modify: docs/hardware-inventory.md
+- Modify: docs/security-and-secrets.md
+- Modify: docs/operations.md
+- Modify: docs/recovery.md
+- Modify: versions.yml
+- Modify: ansible/group_vars/all.yml
 
-**Decisions to record:**
-- Confirm the server hostname, motherboard and BIOS, CPU/RAM, exact GTX 1070 board, Secure Boot state, and automatic power-on after outage.
-- Record every drive's model, serial, capacity, bus, health, intended role, and whether it may be erased. Mark one reviewed install target.
-- Record the wired NIC, LAN interface, DHCP reservation or static address, gateway, DNS, and how the server will reach Home Assistant Green.
-- Confirm local keyboard/display recovery, current data to preserve, SSH public-key fingerprint, and the off-server backup destination.
-- Use Portainer as the current management-UI choice. Remove the repository's Arcane references and candidate version entry only after this decision is confirmed in the commissioning record.
-- Record the rule that management access is tailnet-only while local service traffic uses the wired LAN.
+**Work:**
+- Record the confirmed 8 GiB system RAM, 8 GiB GTX 1070 VRAM, disabled-sleep requirement, generated-hostname behavior, full-desktop requirement, no existing server migration, wired-LAN path to Home Assistant Green, and Portainer selection.
+- Replace stale statements that desktop Linux or a graphical desktop is out of scope. Keep the server minimal by specifying a lightweight remote session, not by omitting the required desktop.
+- Replace Arcane references with Portainer consistently in the design and operations docs; remove the Arcane candidate release and add a Portainer candidate only after checking the chosen edition and current release.
+- Keep local host details out of these public files. Add instructions for the ignored local inventory overlay and locally stored hardware report.
+- Move the off-server backup destination from initial commissioning to the backup work package. It is required before production migration, not before the blank OS install.
+- Preserve the current safety gate. This task changes documentation/defaults only and must not enable deployment.
 
 **Verification:**
-- Review the inventory with the physical machine present.
-- Check that the documented install-disk serial matches the drive firmware or OS inventory.
-- Check that no private key, password, Tailscale auth key, or backup credential appears in the record.
-- Search the repository for Arcane and replace stale references consistently before adding Portainer files.
+- Search tracked files for Arcane, “no desktop”, “hostname: choose”, and “RAM: record”; resolve each stale reference or document why it remains.
+- Confirm no private network address, disk serial, MAC address, password, or key was added to public files.
+- Run make check.
 
-**Done when:** The install target, network plan, recovery route, service manager, data-preservation decision, and backup destination are recorded, and a second trusted copy of the repository exists.
+**Done when:** The committed architecture describes the user's actual requirements and does not demand manual collection of facts the machine can report.
 
-## Task 2: Make repository checks reflect real deployable content
+## Task 2: Make repository validation test useful negative cases
 
 **Files:**
 - Modify: Makefile
@@ -65,74 +85,107 @@
 - Modify: scripts/check-secrets.sh
 - Modify: scripts/validate-compose.sh
 - Modify: ansible/requirements.yml
-- Create as needed: tests/ or ansible/tests/
+- Create as needed: tests/fixtures/ or ansible/tests/
 
 **Work:**
-- Keep YAML lint, Ansible lint, shell lint, syntax checks, Compose config validation, and secret-marker scan in the required pull-request workflow.
-- Ensure Compose validation fails if a Compose file exists but Docker Compose validation fails. Keep the current no-files case explicitly labelled as a skip.
-- Add a test that the deployment guard still refuses to run while deployment_ready is false.
-- Add tests for reserved inventory placeholders and invalid disk identifiers once preflight is implemented.
-- Ensure CI installs the same pinned Ansible roles and collections used by local validation; avoid making CI depend on decrypted secrets or a live server.
-- Keep vendored Ansible dependencies out of Git.
+- Keep YAML lint, Ansible lint, shell lint, syntax checks, Compose validation, and secret-marker scanning in pull-request CI.
+- Keep the no-Compose case labelled as a skip; fail if a present Compose file is invalid.
+- Add tests that placeholder inventory and deployment_ready=false cannot pass deployment preflight.
+- Add tests for missing and mismatched install-disk selection after the installer/bootstrap interface is implemented.
+- Keep CI independent of the live server and decrypted credentials.
 
 **Verification:**
-- Run make check locally from a clean checkout.
-- Deliberately introduce a temporary malformed YAML, shell syntax error, bad Compose file, and known test secret marker in an isolated test fixture; confirm each relevant check fails, then remove the fixture.
-- Confirm the workflow passes without silently claiming a Compose or host test ran.
+- Run make check from a clean checkout.
+- In isolated temporary fixtures, prove malformed YAML, shell syntax, invalid Compose, and a known secret marker fail their relevant checks; remove the fixtures afterward.
+- Confirm CI reports the Compose check as skipped while no stacks exist and as passed only after a real Compose file is validated.
 
-**Done when:** CI gives a clear pass/fail/skip for every repository-level check and catches the expected negative cases.
+**Done when:** Repository checks detect the failure cases above without requiring a host or real credentials.
 
-## Task 3: Establish recoverable secrets and access materials
-
-**Files:**
-- Modify: secrets/README.md
-- Modify: secrets/.sops.yaml.example
-- Modify: docs/security-and-secrets.md
-- Modify: docs/recovery.md
-- Create: local ignored age-key and inventory setup instructions, without committing key material
-
-**Work:**
-- Generate an age keypair on a trusted workstation, not on the server.
-- Store the private key and passphrase in two separately controlled offline recovery locations.
-- Replace the example public recipient in the local SOPS configuration and verify encrypt/decrypt/re-encrypt from a second trusted machine.
-- Store only encrypted service credentials in SOPS once actual credentials exist. Keep the Restic password and remote repository credentials recoverable separately.
-- Choose how the first Tailscale enrollment will happen: one-time interactive enrollment or a short-lived, narrowly scoped auth key injected locally and removed afterward.
-- Write a rotation and loss-recovery procedure. Do not create placeholder production credentials.
-
-**Verification:**
-- Encrypt a harmless fixture, decrypt it on a second machine, and confirm that Git contains only ciphertext.
-- Confirm the private age key and plaintext fixture are ignored and absent from tracked files.
-- Confirm the recovery runbook identifies which credential unlocks each encrypted data set.
-
-**Done when:** Secret encryption and recovery have been exercised independently of the server.
-
-## Task 4: Build and test a guarded Ubuntu Autoinstall
+## Task 3: Build a USB writer with a generated hostname
 
 **Files:**
-- Modify: autoinstall/README.md
-- Create: autoinstall/user-data.template
+- Create: scripts/make-usb.sh
 - Create: autoinstall/build.sh
 - Create: autoinstall/validate.sh
+- Create: autoinstall/user-data.template
 - Modify: .gitignore
-- Create: tests/autoinstall/fixtures/ for safe test inputs
+- Modify: autoinstall/README.md
+- Create: tests/autoinstall/
 
 **Work:**
-- Select and record the official Ubuntu Server 26.04 image, checksum, and installation method after checking current hardware and NVIDIA support.
-- Generate user-data from non-secret templates and local ignored inputs. The committed template must not contain a real password hash, SSH private key, age key, or backup credential.
-- Require a configured boot-drive serial or stable identifier; abort if it is missing, duplicated, or differs from the reviewed target. Never select “largest disk.”
-- Keep the first bare-metal installation confirmation explicit. Use a disposable VM or spare drive for destructive installer tests.
-- Configure a minimal base OS, SSH public-key access, a named administrator, hostname, and wired networking. Leave host service setup to Ansible.
-- Keep rendered user-data and ISO output in ignored directories and show their paths clearly.
+- Run the USB builder on the user's trusted computer. Download or accept the official Ubuntu Server 26.04 ISO and verify its published checksum before modifying it.
+- Generate a random, DNS-safe server hostname at build time. Print it prominently, save a plain hostname record alongside the locally generated USB output, and insert that value as the installer's hostname default.
+- Show removable storage devices by model and capacity. Require the user to choose the USB device and confirm the exact device before writing; never guess a target.
+- Include the provisioning repository/bootstrap files needed for the first local setup. Keep rendered seed data and output in ignored paths.
+- Do not ask the user to collect motherboard, BIOS, NIC, disk serial, or RAM information before USB creation; collect those on the target machine.
+- Document that the server installation target disk is chosen later on the target computer, separately from the USB device.
 
 **Verification:**
-- Validate the rendered Autoinstall document against the selected Ubuntu release's schema.
-- Build the installer and verify the source ISO checksum before modification.
-- Run the installer in a VM with a disposable disk; verify the resulting OS version, hostname, SSH key login, and console recovery.
-- Test missing and mismatched disk serial inputs and confirm the build/install process stops before writing.
+- Verify the ISO hash against Canonical's published checksum.
+- Test that the builder refuses a non-removable target, a missing target, and a confirmation string that does not match the selected USB device.
+- Test hostname generation for permitted characters and length; verify the printed hostname matches the hostname in the generated seed.
+- Ensure output contains no Wi-Fi password, Tailscale key, age private key, or SSH private key.
 
-**Done when:** A disposable target installs reproducibly and the production disk cannot be selected by an implicit default.
+**Done when:** A verified installer USB is written only after explicit USB-device confirmation, and the generated hostname is shown to the user.
 
-## Task 5: Implement Ansible preflight and base host roles
+## Task 4: Use Autoinstall screens for the questions that need a person
+
+**Files:**
+- Modify: autoinstall/user-data.template
+- Modify: autoinstall/validate.sh
+- Modify: autoinstall/README.md
+- Create: tests/autoinstall/ interactive-flow fixtures
+
+**Work:**
+- Use Ubuntu Autoinstall interactive sections for storage, identity, and network so the installer pauses on the target machine for the remaining choices. Canonical's reference documents interactive-sections and identifies storage, identity, and network as sections that can be interactive: https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+- Keep the generated hostname as the displayed identity default; allow the user to review it at the console without collecting it in advance.
+- Make wired Ethernet DHCP the default. If the user chooses wireless, let the target-side network screen request the SSID and password; do not bake those into the committed template.
+- Ask the user to choose and confirm the installation disk on the physical machine. Show enough information to distinguish drives; if two candidates are ambiguous, stop and provide a serial/model listing rather than guess.
+- Ask for the Linux user and password on the local installer UI. Do not print, log, or commit the password. Test the exact current Subiquity flow to ensure credentials are not embedded in the USB seed.
+- Install only the minimal Ubuntu Server base. Install host services, desktop, and GPU software later through Ansible.
+- If the current release's UI cannot safely collect a needed value, make the installer abort with a clear instruction; do not silently switch to unattended defaults.
+
+**Verification:**
+- Validate the generated Autoinstall document against the actual 26.04 installer schema.
+- Test in a VM with one disk and with multiple disks. Verify storage requires an explicit choice and no layout silently selects the largest disk.
+- Test wired DHCP and the optional Wi-Fi path on supported hardware; confirm the saved host network config works after reboot.
+- Confirm identity prompts use the generated hostname default and accept local credentials without leaving them in tracked or USB seed files.
+- Verify the installer reaches a local SSH-capable Ubuntu Server after reboot.
+
+**Done when:** The USB boot flow asks only for installation-time choices and cannot erase a disk by default.
+
+## Task 5: Collect machine facts and run a simple local bootstrap
+
+**Files:**
+- Create: scripts/collect-inventory.sh
+- Create: scripts/bootstrap-host.sh
+- Create: tests/inventory/
+- Modify: .gitignore
+- Modify: docs/hardware-inventory.md
+- Modify: docs/recovery.md
+
+**Interface:**
+- Command: sudo /opt/home-server/scripts/bootstrap-host.sh
+- Output: /var/lib/home-server-setup/inventory.json and /var/lib/home-server-setup/inventory.md
+- The report records detected facts and marks unavailable values as unknown; it never invents a value.
+
+**Work:**
+- Copy the repository's bootstrap files to /opt/home-server during installation so the first setup does not depend on cloning Git before network access is working.
+- Collect DMI motherboard/model and BIOS version; CPU model; RAM; PCI GPU identity; disk model, serial, capacity and transport; SMART/NVMe health where supported; NIC model, MAC and interface; OS version; active IP routes; DNS; and Secure Boot state where available.
+- Mark BIOS power-restore setting as a human check unless reliable firmware reporting is available. Ask the user to confirm the setting and disable sleep/suspend through configuration later.
+- Store the detailed report locally with root-only access. Never auto-upload or commit it to public Git.
+- Have the bootstrap command show a concise summary and prompt only for missing choices that block the next step. Do not ask for values already detected or confirmed.
+- Keep bootstrap safe to rerun: detect completed steps, explain what will change, and do not reinstall or repartition disks.
+
+**Verification:**
+- Run collector tests against fixtures with missing DMI data, multiple drives, missing SMART tools, and multiple NICs.
+- Confirm serials and MACs appear only in the local report, not in terminal logs copied to Git or public CI.
+- Run bootstrap twice; the second run must identify completed steps and avoid duplicate users, keys, services, or configuration.
+- Confirm the script does not attempt to write to a disk.
+
+**Done when:** One command on the installed server produces a useful local inventory and asks only for facts that cannot be reliably discovered.
+
+## Task 6: Implement Ansible preflight and base host configuration
 
 **Files:**
 - Modify: ansible/playbooks/site.yml
@@ -144,102 +197,126 @@
 - Create: ansible/roles/access/
 
 **Interfaces:**
-- The site playbook must run preflight before any mutating role.
-- Local host-specific values belong in an ignored inventory overlay, not committed group defaults.
-- Preflight must reject the reserved 192.0.2.10 address, REPLACE_WITH_ADMIN_USER, the wrong host, unexpected OS version, and an unreviewed boot-disk identity.
-- deployment_ready remains false until the final acceptance gate.
+- Preflight consumes the local inventory report and an ignored ansible/inventory/hosts.local.yml overlay.
+- The site playbook runs read-only preflight before any mutating role.
+- deployment_ready stays false until final acceptance.
 
 **Work:**
-- Implement read-only preflight checks for host identity, Ubuntu release, reachability, available storage, disk identifiers, and required local access.
-- Implement idempotent timezone/time configuration, baseline packages and updates policy, power/suspend settings, and required /srv directory creation.
-- Mount only explicitly inventoried data filesystems by UUID. Do not repartition or format as part of ordinary Ansible.
-- Configure SSH keys and sudo only after confirming a second access path. Keep password login changes in a separate, reviewed step.
-- Keep roles small and named for the resource they own. Use handlers for service restarts.
+- Reject the reserved 192.0.2.10 address, REPLACE_WITH_ADMIN_USER, wrong host, unexpected Ubuntu release, unavailable required disk, and absent recovery access.
+- Use detected hardware facts; compare with the confirmed 8 GiB RAM and GTX 1070 expectations and stop for review on a mismatch.
+- Configure Europe/Copenhagen time, time sync, baseline packages, security update policy, power behavior, and /srv directory structure.
+- Disable sleep, suspend, hibernate, and hybrid-sleep targets through managed systemd configuration.
+- Do not repartition or format disks in Ansible. Mount additional explicitly selected storage only by reviewed UUID.
+- Configure SSH access after local account creation and Tailscale works; keep password-login changes in a separate reviewed operation.
+- Keep host-specific addresses and device IDs in the ignored overlay or encrypted local inventory.
 
 **Verification:**
-- Run ansible-lint and syntax check.
-- Run preflight against test inventories: valid host passes; placeholder host, wrong OS, wrong disk identity, and missing recovery access fail without changing the host.
-- Run base roles twice in an isolated test machine; the second run must report no unexpected changes.
-- Inspect the Ansible diff before any real application.
+- Run Ansible lint and syntax checks.
+- Test valid and invalid fixture inventories; every invalid case must fail before mutation.
+- Run the base roles twice on a disposable test system; the second run must make no unexpected changes.
+- Confirm sleep and suspend requests are refused after applying the base role.
 
-**Done when:** The base OS can be configured repeatably, and unsafe or uncommissioned inventory fails before mutation.
+**Done when:** Ansible safely configures the installed OS and refuses to touch a host that does not match the reviewed local inventory.
 
-## Task 6: Establish Tailscale before remote hardening
+## Task 7: Enroll in Tailscale interactively
 
 **Files:**
 - Create: ansible/roles/tailscale/
-- Modify: ansible/playbooks/site.yml
+- Modify: scripts/bootstrap-host.sh
 - Modify: docs/operations.md
 - Modify: docs/recovery.md
 
 **Work:**
-- Install and configure host Tailscale using the pinned collection and an enrollment method chosen in Task 3.
-- Use a stable tailnet hostname and document the node ownership and key-expiry policy.
-- Keep the wired LAN interface and direct LAN routes available. Do not route Home Assistant traffic through Tailscale.
-- Expose administration over the tailnet. Do not add router forwarding or public reverse proxies.
-- Delay firewall and SSH restrictions until tailnet reachability has been tested from another device.
+- Install Tailscale on the host after base networking is available.
+- Start interactive enrollment from the server console. Display the sign-in instructions so the user can authenticate from a phone or another computer.
+- Do not store the user's Tailscale password or a reusable auth key on the USB.
+- Use the generated hostname as the initial node name. Document how to rename it in the tailnet if desired.
+- Keep wired LAN addressing and Tailscale addressing distinct. Home Assistant Green uses the server's LAN address, not a tailnet route.
+- Do not harden SSH or firewall rules until tailnet access has been tested.
 
 **Verification:**
-- Confirm the server appears in the tailnet with the expected identity.
-- From a separate device, connect over cellular or another off-LAN network and establish a second SSH or management session.
-- Confirm the server and Home Assistant Green communicate over their wired LAN addresses.
-- Reboot the server and repeat both remote and local connectivity checks.
-- Confirm an enrollment key is not left in process output, shell history, logs, or Git.
+- Confirm the server appears in the intended tailnet and reports connected.
+- From a separate device on cellular or another off-LAN network, connect to the server over Tailscale.
+- Reboot and verify the tailnet connection returns.
+- Keep local keyboard/display recovery available until a second remote session succeeds.
 
-**Done when:** A second remote path works after reboot and the local LAN path remains independent.
+**Done when:** Tailnet access is proven after reboot without any reusable Tailscale secret on the USB or in Git.
 
-## Task 7: Configure Docker, Compose, storage paths, and network boundaries
+## Task 8: Configure Docker, Compose, and LAN boundaries
 
 **Files:**
 - Create: ansible/roles/docker/
-- Modify: ansible/group_vars/all.yml
 - Create: ansible/templates/daemon.json.j2
 - Create: ansible/templates/docker-logrotate.conf.j2
-- Create: ansible/tests/ for daemon and port-binding policy
-- Create: stacks/README.md examples or validation fixtures
+- Create: tests/docker/
+- Modify: stacks/README.md
 
 **Work:**
 - Install Docker Engine and Compose v2 through the pinned role or a documented equivalent.
-- Configure bounded container logs, restart behavior, and storage locations; keep Docker's internal layer store rebuildable and persistent application state under /srv/data.
+- Configure bounded logs, restart behavior, and application storage under /srv/data. Keep Docker image/layer storage rebuildable.
 - Create /srv/stacks, /srv/data, /srv/backups, /srv/cache, and /srv/scratch with explicit ownership and permissions.
-- Require explicit loopback, tailnet, or LAN bind addresses in Compose. Reject 0.0.0.0 for management services.
-- Document Docker firewall behavior and configure host filtering with rules that preserve established remote access.
-- Do not put production service credentials in Compose files; inject them from protected files or an approved SOPS decryption step.
+- Require each Compose service to state its intended exposure: loopback, tailnet, or a specific LAN address. Reject unrestricted management bindings.
+- Document Docker's firewall behavior; review host filtering and container port publication together.
+- Do not put production credentials in Compose or public environment files.
 
 **Verification:**
-- Check Docker daemon configuration before restart.
-- Run a harmless test container and a test Compose project.
-- Inspect listening sockets and test each exposed port from LAN, tailnet, and an external network.
-- Reboot and confirm Docker and the data mounts return in the expected order.
-- Confirm logs are bounded and important application files are not under Docker's disposable image layers.
+- Validate daemon settings before restarting Docker.
+- Run a harmless test container and Compose project.
+- Inspect listeners and test intended access from LAN, tailnet, and an external network.
+- Reboot and confirm Docker, networking, and data mounts recover in the right order.
 
-**Done when:** Docker and Compose survive reboot, persistent paths are clear, and no management port is reachable from the public internet.
+**Done when:** Docker survives reboot, persistent paths are separate from image layers, and no management service is publicly reachable.
 
-## Task 8: Enable the GTX 1070 for host and container workloads
+## Task 9: Enable the GTX 1070 and measure the 8 GiB resource budget
 
 **Files:**
 - Create: ansible/roles/nvidia/
 - Modify: versions.yml
 - Modify: docs/version-policy.md
 - Modify: scripts/verify-host.sh
-- Create: tests/nvidia/ compatibility notes and expected outputs
+- Create: tests/nvidia/
 
 **Work:**
-- Verify the current Ubuntu kernel, proprietary Pascal driver support, NVIDIA Container Toolkit compatibility, and a container image that still supports the GTX 1070's compute capability.
-- Record one tested tuple: Ubuntu release/kernel, driver package, Container Toolkit version, and GPU test image digest.
-- Install the driver in a separate change from firewall or SSH changes. Do not use the open kernel module for this Pascal card.
-- Keep GPU access opt-in; only Compose services that need it receive NVIDIA device access.
-- Pin test image by digest or immutable tag; do not use latest.
+- Check the current Ubuntu kernel, proprietary Pascal driver, NVIDIA Container Toolkit, and test image compatibility before choosing package versions.
+- Record a tested tuple: Ubuntu release/kernel, driver, toolkit, and immutable GPU test image.
+- Install the proprietary driver in a separate reviewed change. Grant GPU access only to workloads that need it.
+- Measure memory with the base OS, remote desktop, management services, and representative workload running. The machine has 8 GiB of system RAM as well as 8 GiB of GPU VRAM; do not assume those resources are interchangeable.
+- Record RAM/swap pressure and OOM events. Keep large workloads out of the baseline acceptance until measured.
 
 **Verification:**
-- Confirm the host reports the GTX 1070 with nvidia-smi.
-- Run the pinned GPU test container and confirm it sees the GPU and can execute a small CUDA operation.
-- Reboot and repeat both checks.
-- Test rollback to the previously bootable kernel/driver path before declaring the GPU milestone complete.
+- Confirm nvidia-smi identifies the GTX 1070 on the host.
+- Run a pinned container that detects the GPU and executes a small CUDA operation.
+- Reboot and repeat host and container GPU tests.
+- Record idle and representative peak system RAM use with the desktop active; confirm the chosen baseline remains responsive and has no OOM kills.
+- Document a rollback to a known-bootable kernel/driver combination.
 
-**Done when:** The exact tested software tuple works on the host and in a container after reboot and has a documented rollback.
+**Done when:** The GPU tuple works after reboot and the desktop-plus-baseline memory footprint has been measured.
 
-## Task 9: Deploy host management and Docker management
+## Task 10: Add secrets only when a service needs them
+
+**Files:**
+- Modify: secrets/README.md
+- Modify: secrets/.sops.yaml.example
+- Modify: docs/security-and-secrets.md
+- Modify: docs/recovery.md
+- Create: local ignored age-key setup instructions
+
+**Work:**
+- Defer SOPS/age setup until encrypted service or backup credentials are actually needed; it is not a prerequisite for writing the first OS USB.
+- Generate the age key on a trusted workstation and keep two independent recovery copies outside the server and Git.
+- Test encrypt/decrypt/re-encrypt from a second trusted machine before committing encrypted secrets.
+- Never put a private key, Restic password, Tailscale reusable auth key, or plaintext Wi-Fi password in public Git.
+- Use interactive Tailscale login instead of a reusable auth key.
+- If Wi-Fi is entered in the installer, verify it does not appear in the committed template or USB builder output; treat the installed root-only network config as sensitive.
+
+**Verification:**
+- Encrypt a harmless fixture, decrypt it on a second machine, and confirm tracked content is ciphertext.
+- Confirm private age key and plaintext fixture remain untracked.
+- Confirm recovery notes identify which protected copy is needed for each encrypted repository.
+
+**Done when:** Secret handling is tested before any real service/backup credential is committed or deployed.
+
+## Task 11: Deploy Cockpit and Portainer
 
 **Files:**
 - Create: ansible/roles/cockpit/
@@ -248,78 +325,101 @@
 - Modify: docs/architecture.md
 - Modify: docs/operations.md
 - Modify: scripts/verify-host.sh
+- Modify: versions.yml
 
 **Work:**
-- Install Cockpit for Ubuntu administration and Portainer for Docker administration; choose and pin a tested Portainer edition and version.
-- Keep both interfaces reachable only through the tailnet. Use the narrowest documented Docker API access Portainer supports; document the API permissions and risk before enabling them.
-- Persist Portainer configuration under /srv/data and keep the stack definition in Git.
-- Make Git the source of truth. Document whether Compose projects are deployed from Git checkout or Portainer's Git integration; test updates and rollback using that same path.
-- Add health checks where the upstream service supports them and bound logs.
+- Install Cockpit for Ubuntu host administration and Portainer for Docker administration; pin a reviewed edition and image version.
+- Keep both tools private to Tailscale or a specifically documented trusted LAN.
+- Use the narrowest supported Docker API access for Portainer; document any socket access and its security consequences before enabling it.
+- Persist Portainer configuration under /srv/data. Keep stack definitions in Git and document one source-of-truth deployment path.
+- Do not count Cockpit or Portainer as the full remote desktop.
 
 **Verification:**
-- Confirm both interfaces load from a tailnet device and fail from a public external network.
-- Confirm a Portainer restart does not lose endpoints, users, or stack state.
-- Change one harmless Compose setting in Git, deploy it through the documented path, and revert it.
-- Confirm the raw Docker socket is not mounted unless an explicit reviewed decision requires it.
+- Confirm both interfaces load over the tailnet and fail from an external network.
+- Restart Portainer and confirm its configuration and endpoint persist.
+- Change a harmless Compose setting in Git, deploy it through the chosen path, then roll it back.
+- Confirm raw Docker socket access is limited to the management service only if required.
 
-**Done when:** Both management tools work remotely without public exposure and a service can be redeployed from Git after restart.
+**Done when:** Host and Docker administration work privately and deployment can be reproduced from Git.
 
-## Task 10: Add monitoring and alerting
+## Task 12: Provide a full remote desktop
+
+**Files:**
+- Create: ansible/roles/desktop/
+- Modify: docs/architecture.md
+- Modify: docs/security-and-secrets.md
+- Modify: docs/operations.md
+- Modify: docs/recovery.md
+- Modify: scripts/verify-host.sh
+- Create: tests/desktop/
+
+**Work:**
+- Implement a lightweight XFCE desktop and xrdp as the first candidate. xrdp provides graphical Linux desktop login over RDP and recommends xorgxrdp for the Xorg experience: https://github.com/neutrinolabs/xrdp
+- Keep the desktop usable over a remote login session even with no physical monitor. Provide a file manager, terminal, and standard desktop settings; do not install a full Ubuntu Desktop package by default.
+- Restrict TCP 3389 to the tailnet interface or an explicitly chosen trusted LAN. Do not forward it from the router or expose it publicly. Tailscale documents RDP as a remote-administration use case: https://tailscale.com/docs/solutions/windows-rdp
+- Preserve Cockpit and SSH as separate recovery paths.
+- Record session behavior: reconnect, resolution resizing, clipboard, logout, reboot, and concurrent local/remote login behavior.
+- Measure desktop RAM and CPU use with the 8 GiB system-memory limit.
+
+**Verification:**
+- Connect from the intended RDP client over Tailscale and confirm a usable interactive desktop session.
+- Test file manager, terminal, clipboard, resize, disconnect/reconnect, and reboot.
+- Confirm port 3389 works through Tailscale and is blocked from the public internet.
+- Confirm desktop + baseline services do not cause OOM kills and remain usable during a representative container workload.
+
+**Done when:** The user can reach a full graphical session remotely after reboot with no public RDP exposure.
+
+## Task 13: Add monitoring and tested alert transitions
 
 **Files:**
 - Create: stacks/beszel/compose.yaml
 - Create: stacks/uptime-kuma/compose.yaml
-- Create: stacks/beszel/README.md
-- Create: stacks/uptime-kuma/README.md
+- Create: service READMEs
 - Modify: docs/operations.md
 - Modify: scripts/verify-host.sh
 
 **Work:**
-- Deploy Beszel Hub and agent with persistent state and only the host/container metrics needed for v1.
-- Deploy Uptime Kuma with persistent monitor state.
-- Restrict both management interfaces to the tailnet.
-- Add checks for host reachability, Tailscale, Docker, management endpoints, GPU test endpoint, backup freshness, and the later production service.
-- Configure a notification destination and test its failure and recovery notifications.
-- Do not claim GPU monitoring until a real metric is shown on the dashboard.
+- Deploy Beszel Hub/agent and Uptime Kuma with pinned images, persistent data, private access, and bounded logs.
+- Monitor host, disks, containers, GPU, remote desktop, and the future production service.
+- Add alert destinations only after credentials are available through the approved secret flow.
+- Keep HA Green outside this server's failure domain; monitor its availability only if it is useful and authorized.
 
 **Verification:**
-- Validate every Compose project with docker compose config.
-- Confirm Beszel receives host and container metrics after reboot.
-- Confirm GPU data appears if the chosen agent/plugin supports it; otherwise document the specific limitation and monitor GPU health through a separate verified check.
-- Stop a test service and confirm Kuma detects failure, then restart it and confirm recovery.
-- Confirm monitors do not report stale cached success as current health.
+- Validate Compose files with Docker Compose.
+- Confirm Beszel host/container metrics after reboot; claim GPU telemetry only after observing an actual GPU metric.
+- Stop a test service, confirm Kuma alert, restore service, and confirm recovery notification.
+- Test stale-health and unavailable-host cases.
 
-**Done when:** A real stopped service and a real recovered service produce verified alert transitions.
+**Done when:** Monitoring shows current host/service health and produces verified failure and recovery alerts.
 
-## Task 11: Configure off-server backups and prove restore
+## Task 14: Configure off-server backups and prove restore
 
 **Files:**
 - Create: ansible/roles/restic/
-- Create: stacks/restic-profile/ or host systemd units, after choosing the execution model
-- Modify: secrets/README.md
+- Create: host systemd units or a Restic Profile stack after choosing one execution model
+- Create: scripts/verify-backup.sh
 - Modify: docs/security-and-secrets.md
 - Modify: docs/operations.md
 - Modify: docs/recovery.md
-- Create: scripts/verify-backup.sh
 
 **Work:**
-- Select an off-server repository and record its network, account, capacity, retention, and recovery ownership.
-- Encrypt backups with Restic. Keep the repository password and remote credentials in SOPS/local protected files and separate recovery copies.
-- Back up /srv/data and required machine configuration; exclude caches, scratch, Docker image layers, and reproducible downloads.
-- Add application-consistent database exports before backup and retention/prune only after confirming a good snapshot.
-- Schedule backups with bounded logs and visible failure alerts. Avoid overlapping backup and prune jobs.
-- Define a restore target under a temporary path so verification never overwrites production state.
+- Ask for the off-server repository and retention details at this stage, not during initial installation.
+- Back up /srv/data and required machine configuration. Exclude caches, scratch, Docker image layers, and reproducible downloads.
+- Add application-consistent database exports before snapshotting services that need them.
+- Store Restic password and remote credentials in SOPS or root-only local files with separate recovery copies.
+- Schedule checks and backups with non-overlapping jobs, bounded logs, and stale/failure alerts.
+- Restore into a temporary path; never verify by overwriting live data.
 
 **Verification:**
-- Run the first snapshot and list its contents.
-- Run Restic integrity checks and confirm the expected source paths exist.
-- Restore a representative service and its database to a temporary directory; open/validate the restored data using the service's own tool.
-- Simulate missing credentials and unavailable remote storage; confirm the job fails visibly and monitoring reports the failure.
-- Confirm backup age alert triggers when the last successful snapshot is stale.
+- Create a snapshot and inspect its file list.
+- Run a Restic integrity check.
+- Restore one representative service and database into a temporary location and validate with that service's own tooling.
+- Simulate unavailable repository/credentials and verify failure is visible in Kuma.
+- Confirm stale-backup alert behavior.
 
-**Done when:** A representative service can be restored from the off-server repository with documented credentials and no production overwrite.
+**Done when:** A service's data can be restored from an off-server repository, and backup failure is observable.
 
-## Task 12: Migrate the first production service and validate LAN integration
+## Task 15: Deploy the first production workload over the LAN
 
 **Files:**
 - Create: stacks/<service>/compose.yaml
@@ -327,24 +427,21 @@
 - Modify: docs/operations.md
 - Modify: docs/recovery.md
 - Modify: scripts/verify-host.sh
-- Add service-specific import/export scripts only where required
 
 **Work:**
-- Choose the first production workload, document its data paths, ports, health check, dependencies, backup method, and rollback.
-- For Better Lectio, keep Home Assistant on Home Assistant Green and use the server's wired LAN address for HA integration traffic.
-- Deploy first with test or copied data; verify service behavior before moving authoritative data.
-- Migrate production data only after Task 11 restore succeeds.
-- Keep services without a recovery path out of the production stack.
+- Choose the first production workload and document ports, persistent data, health checks, dependencies, backup, rollback, and resource budget.
+- For Better Lectio, keep Home Assistant on Green and have HA reach the service at its wired LAN address.
+- Deploy with test/copied data first. Migrate authoritative data only after the Task 14 restore passes.
+- Keep services without a working recovery route out of production.
 
 **Verification:**
-- Check the service from a LAN client and, where intended, through tailnet remote access.
-- Confirm HA Green reaches the service directly over the wired LAN.
-- Stop/restart the service, reboot the host, and verify health and data persistence.
-- Restore the service into a temporary location and confirm the documented recovery steps still work.
+- Check service access from the LAN and intended remote access over the tailnet.
+- Confirm HA Green reaches it directly over the LAN, without a Tailscale route.
+- Reboot, check persistence, and restore into a temporary directory.
 
-**Done when:** The first production service has a tested deployment, LAN path, rollback, and restore procedure.
+**Done when:** The first workload has a tested LAN path, a resource profile, rollback, and restore procedure.
 
-## Task 13: Complete host acceptance and recovery exercise
+## Task 16: Complete acceptance and recovery exercise
 
 **Files:**
 - Modify: scripts/verify-host.sh
@@ -355,26 +452,28 @@
 - Modify: README.md
 
 **Work:**
-- Split host verification into explicit foundation and full profiles. The full profile must fail when any required check is unset or skipped.
-- Check OS, time, storage mounts, LAN/gateway/DNS/internet, Tailscale, Docker/Compose, host and container GPU, Cockpit, Portainer, Beszel, Kuma, production endpoints, backup freshness, and Restic integrity.
-- Add a deployment preflight that checks inventory identity, deployment_ready, required encrypted secrets, repository cleanliness, and an Ansible check/diff preview. Keep deployment blocked until all acceptance criteria are satisfied.
-- Perform a controlled reboot with local break-glass available. Verify a second remote connection before closing the original.
-- Rebuild on a spare disk if available and record manual steps. Do not use the production boot disk for the first rebuild exercise.
-- Only after all gates pass, change deployment_ready in a separate reviewed commit and remove the scaffold refusal in a separate reviewed change.
+- Make the full verification profile fail if a required check is unset or skipped.
+- Verify Ubuntu, time, storage mounts, LAN/gateway/DNS/internet, Tailscale, Docker/Compose, host/container GPU, XFCE/xrdp, Cockpit, Portainer, Beszel, Kuma, production services, and backup freshness/integrity.
+- Add deployment preflight for the generated host identity, local inventory, non-placeholder inventory, required secrets, clean repo, and Ansible check/diff.
+- Reboot with local console recovery available; verify a second remote Tailscale session and RDP session before closing the original path.
+- Restore a real snapshot to temporary storage. Rebuild on a spare disk if available and document manual steps.
+- Only after all criteria pass, change deployment_ready in a separate reviewed change and remove the scaffold refusal in a separate reviewed change.
 
 **Verification:**
 - Run make check and the full host profile.
-- Reboot, then rerun the full host profile.
-- Restore a real snapshot to a temporary path.
-- Perform and document the spare-disk rebuild if hardware is available.
-- Test that deploy still refuses when any safety gate is false.
+- Reboot, rerun the full profile, and check for OOM or service failures.
+- Restore a real snapshot to a temporary path and validate the content.
+- Test that deployment still refuses when any safety gate is false.
 
-**Done when:** A reviewed USB and Ansible reproduce the host; remote and LAN paths survive reboot; GPU, management, monitoring, and backups pass; and a restore/rebuild has been exercised.
+**Done when:** The USB and Ansible reproduce the server; full remote desktop, tailnet and LAN paths work after reboot; GPU and services pass acceptance; and restore/rebuild has been exercised.
 
 ## Release gates
 
-1. Do not generate a production installer until the physical boot disk and data-preservation decision are recorded.
-2. Do not harden SSH or firewall until Tailscale and local break-glass access both work.
-3. Do not install NVIDIA drivers until the exact Ubuntu/kernel/driver/toolkit/container tuple is checked.
-4. Do not move production data until off-server restore is proven.
-5. Do not remove the deployment guard until the full post-reboot acceptance profile passes.
+1. Do not write the installer USB until the ISO checksum passes and the builder confirms the USB device.
+2. Do not start installation until the physical machine's storage screen has an explicitly selected and confirmed target drive.
+3. Do not assume the hostname: generate it during USB creation, display it, and use that same value during installation and Tailscale enrollment.
+4. Do not restrict SSH/firewall until Tailscale and local console recovery work.
+5. Do not expose xrdp, Cockpit, Portainer, Beszel, or Kuma to the public internet.
+6. Do not approve the desktop/workload stack until combined use fits the 8 GiB RAM budget without OOM kills.
+7. Do not migrate production data until off-server restore is proven.
+8. Do not remove the deployment guard until the full post-reboot acceptance profile passes.
