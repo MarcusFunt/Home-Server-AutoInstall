@@ -6,7 +6,7 @@
 
 **Architecture:** A USB builder runs on the user's trusted computer, generates and displays a random hostname, verifies the official installer image, and writes a guarded Ubuntu Autoinstall USB. The installer pauses on the target machine for the drive, identity, and network questions that require human input; after first boot, a local bootstrap command records discoverable machine details and asks only for unresolved interactive choices. Ansible then configures Ubuntu Server, Tailscale, Docker, the GTX 1070, a lightweight remote desktop, administration, monitoring, and backups.
 
-**Tech Stack:** Ubuntu Server 26.04 LTS, Ubuntu Autoinstall/Subiquity, Ansible, Docker Engine and Compose, NVIDIA proprietary Pascal driver and Container Toolkit, Tailscale, XFCE with xrdp as the first desktop candidate, Cockpit, Portainer, Beszel, Uptime Kuma, SOPS/age, Restic/Restic Profile.
+**Tech Stack:** Ubuntu Server 26.04 LTS, Ubuntu Autoinstall/Subiquity, Ansible, Docker Engine and Compose, NVIDIA proprietary Pascal driver and Container Toolkit, Tailscale, XFCE with xrdp as the first desktop candidate, Cockpit, Arcane, Beszel, Uptime Kuma, SOPS/age, Restic/Restic Profile.
 
 **Spec:** README.md, docs/architecture.md, docs/implementation-plan.md, docs/hardware-inventory.md, docs/security-and-secrets.md, docs/operations.md, docs/recovery.md, and the user decisions recorded in this plan.
 
@@ -16,11 +16,30 @@
 - Hardware budget: 8 GiB system RAM and a GTX 1070 with 8 GiB VRAM.
 - Sleep and suspend must be disabled.
 - Hostname is unimportant; generate a random one during USB creation and show it before writing the USB.
-- A full graphical remote desktop is a key requirement. Cockpit and Portainer alone do not satisfy it.
-- Use the wired LAN for local services and Home Assistant Green. Use Tailscale for remote administration.
-- Keep Home Assistant on Home Assistant Green.
-- Use Portainer as the Docker management UI. Current main-branch docs still say Arcane and need to be reconciled.
-- Use an interactive first-time setup for details that are not fixed or cannot be detected. Do not make the user transcribe ordinary hardware facts into Git.
+- A full graphical remote desktop is required. Cockpit remains the host administration interface; it does not replace the desktop.
+- Use Ubuntu Server 26.04 LTS bare metal, Autoinstall, Ansible, Docker Compose, and the host NVIDIA proprietary driver plus NVIDIA Container Toolkit.
+- Use Tailscale on the host, with no public port forwarding. Tailscale SSH is the preferred CLI path; use Tailscale Serve for private web-management addresses where suitable.
+- Home Assistant remains on Home Assistant Green and reaches server services over the wired LAN.
+- Cockpit is the host GUI; Arcane is the Docker/Compose GUI with Git-backed projects. The repo already documents Arcane; retain it.
+- Monitor with Beszel and Uptime Kuma; back up off-server with Restic and Restic Profile; protect committed secrets with SOPS and age.
+- Move Better Lectio only after the host foundation and a real backup/restore test are complete.
+- The desired style is mostly hands-off appliance operation, with reviewable Git changes and a repeatable rebuild path.
+
+## Bootstrap question timing
+
+| Value | How to obtain it |
+|---|---|
+| Hostname | Generate during USB creation, display it, and seed the installer with it. |
+| Install disk | Show available drives in the target machine's installer and require an explicit selection and confirmation. |
+| Linux account | Ask on the target machine's interactive identity screen; never bake the password into the public seed. |
+| Wired network | Use the wired LAN and DHCP by default; let the installer detect the link. |
+| Wi-Fi SSID/password | Ask only if Wi-Fi is actually needed; do not require these before USB creation. |
+| Tailscale login | Ask on the server during first boot; authenticate from a phone or another computer. Store no reusable auth key on the USB. |
+| Hardware facts | Collect after install with a local inventory script; do not require manual transcription. |
+| BIOS power-restore setting | Ask for a physical BIOS check later if software cannot read it. |
+| Backup target and retention | Ask before migrating production data, not before the blank OS installation. |
+| SSH key | Use Tailscale SSH initially. Ask for a public key only if ordinary SSH outside Tailscale is later required. |
+| Remote desktop method | Start by validating XFCE plus xrdp as the lightweight full-session option; keep access private to the tailnet. |
 
 ## Global Constraints
 
@@ -48,7 +67,7 @@
 
 ---
 
-## Task 1: Reconcile the repository with confirmed choices
+## Task 1: Align repository instructions with the actual choices
 
 **Files:**
 - Modify: README.md
@@ -59,24 +78,25 @@
 - Modify: docs/security-and-secrets.md
 - Modify: docs/operations.md
 - Modify: docs/recovery.md
-- Modify: versions.yml
 - Modify: ansible/group_vars/all.yml
 
 **Work:**
-- Record the confirmed 8 GiB system RAM, 8 GiB GTX 1070 VRAM, disabled-sleep requirement, generated-hostname behavior, full-desktop requirement, no existing server migration, wired-LAN path to Home Assistant Green, and Portainer selection.
-- Replace stale statements that desktop Linux or a graphical desktop is out of scope. Keep the server minimal by specifying a lightweight remote session, not by omitting the required desktop.
-- Replace Arcane references with Portainer consistently in the design and operations docs; remove the Arcane candidate release and add a Portainer candidate only after checking the chosen edition and current release.
-- Keep local host details out of these public files. Add instructions for the ignored local inventory overlay and locally stored hardware report.
-- Move the off-server backup destination from initial commissioning to the backup work package. It is required before production migration, not before the blank OS install.
-- Preserve the current safety gate. This task changes documentation/defaults only and must not enable deployment.
+- Record the confirmed RAM/VRAM, disabled-sleep requirement, generated hostname, full-desktop requirement, no existing server configuration to migrate, wired-LAN path to Home Assistant Green, and the selected management tools.
+- Keep Arcane as the Docker/Compose management UI; the supplied project brief and current main-branch docs explicitly select it for Git-backed Compose workflows.
+- Remove stale statements that a desktop environment is out of scope. Keep Cockpit for host administration and add a separate full remote desktop requirement.
+- Keep the NVIDIA, Restic/Restic Profile, Tailscale host, Beszel, Uptime Kuma, SOPS/age, and Better Lectio ordering from the supplied project brief.
+- Do not require a manually completed hardware inventory before USB creation. Mark machine-specific fields as detected locally or prompted at the stage where they are needed.
+- Keep disk serials, MAC addresses, private LAN addresses, and inventory reports out of public Git. Retain the ignored local inventory overlay.
+- Defer backup destination details until backup configuration, while requiring a tested restore before production migration.
+- Keep deployment_ready false; this task updates documentation and defaults only.
 
 **Verification:**
-- Search tracked files for Arcane, “no desktop”, “hostname: choose”, and “RAM: record”; resolve each stale reference or document why it remains.
-- Confirm no private network address, disk serial, MAC address, password, or key was added to public files.
+- Search tracked files for stale “no desktop” exclusions; resolve each conflict with the new requirement.
+- Confirm Arcane remains the sole Compose manager in the project docs and this plan.
+- Confirm no private address, serial, MAC, password, or key was added to public files.
 - Run make check.
 
-**Done when:** The committed architecture describes the user's actual requirements and does not demand manual collection of facts the machine can report.
-
+**Done when:** The repository reflects all user-confirmed requirements and does not ask the user to manually collect facts the machine or installer can obtain.
 ## Task 2: Make repository validation test useful negative cases
 
 **Files:**
@@ -316,32 +336,31 @@
 
 **Done when:** Secret handling is tested before any real service/backup credential is committed or deployed.
 
-## Task 11: Deploy Cockpit and Portainer
+## Task 11: Deploy Cockpit and Arcane
 
 **Files:**
 - Create: ansible/roles/cockpit/
-- Create: stacks/portainer/compose.yaml
-- Create: stacks/portainer/README.md
+- Create: stacks/arcane/compose.yaml
+- Create: stacks/arcane/README.md
 - Modify: docs/architecture.md
 - Modify: docs/operations.md
 - Modify: scripts/verify-host.sh
-- Modify: versions.yml
 
 **Work:**
-- Install Cockpit for Ubuntu host administration and Portainer for Docker administration; pin a reviewed edition and image version.
-- Keep both tools private to Tailscale or a specifically documented trusted LAN.
-- Use the narrowest supported Docker API access for Portainer; document any socket access and its security consequences before enabling it.
-- Persist Portainer configuration under /srv/data. Keep stack definitions in Git and document one source-of-truth deployment path.
-- Do not count Cockpit or Portainer as the full remote desktop.
+- Install Cockpit for Ubuntu host administration and Arcane for Docker/Compose operations; validate and pin the already-recorded candidate release and image.
+- Keep both tools reachable through the tailnet or a specifically documented trusted LAN. Use Tailscale Serve for private web addresses where it fits.
+- Configure Arcane to operate Git-backed Compose projects so Git remains the permanent source of truth.
+- Restrict Docker API access with the narrowest compatible socket-proxy policy; document the API permissions Arcane requires.
+- Persist application state under /srv/data and keep stack definitions in Git.
+- Cockpit and Arcane are administration interfaces; neither is the full graphical remote desktop.
 
 **Verification:**
-- Confirm both interfaces load over the tailnet and fail from an external network.
-- Restart Portainer and confirm its configuration and endpoint persist.
-- Change a harmless Compose setting in Git, deploy it through the chosen path, then roll it back.
-- Confirm raw Docker socket access is limited to the management service only if required.
+- Confirm both interfaces load through the tailnet and fail from a public external network.
+- Restart Arcane and confirm its configuration and endpoints persist.
+- Deploy a harmless Git-backed Compose change, then roll it back from Git.
+- Confirm Docker API access is limited to Arcane and required proxy components.
 
-**Done when:** Host and Docker administration work privately and deployment can be reproduced from Git.
-
+**Done when:** Host and Docker administration work privately, and Compose deployments remain reproducible from Git.
 ## Task 12: Provide a full remote desktop
 
 **Files:**
@@ -453,7 +472,7 @@
 
 **Work:**
 - Make the full verification profile fail if a required check is unset or skipped.
-- Verify Ubuntu, time, storage mounts, LAN/gateway/DNS/internet, Tailscale, Docker/Compose, host/container GPU, XFCE/xrdp, Cockpit, Portainer, Beszel, Kuma, production services, and backup freshness/integrity.
+- Verify Ubuntu, time, storage mounts, LAN/gateway/DNS/internet, Tailscale, Docker/Compose, host/container GPU, XFCE/xrdp, Cockpit, Arcane, Beszel, Kuma, XFCE/xrdp, production services, and backup freshness/integrity.
 - Add deployment preflight for the generated host identity, local inventory, non-placeholder inventory, required secrets, clean repo, and Ansible check/diff.
 - Reboot with local console recovery available; verify a second remote Tailscale session and RDP session before closing the original path.
 - Restore a real snapshot to temporary storage. Rebuild on a spare disk if available and document manual steps.
@@ -473,7 +492,7 @@
 2. Do not start installation until the physical machine's storage screen has an explicitly selected and confirmed target drive.
 3. Do not assume the hostname: generate it during USB creation, display it, and use that same value during installation and Tailscale enrollment.
 4. Do not restrict SSH/firewall until Tailscale and local console recovery work.
-5. Do not expose xrdp, Cockpit, Portainer, Beszel, or Kuma to the public internet.
+5. Do not expose xrdp, Cockpit, Arcane, Beszel, or Kuma to the public internet.
 6. Do not approve the desktop/workload stack until combined use fits the 8 GiB RAM budget without OOM kills.
 7. Do not migrate production data until off-server restore is proven.
 8. Do not remove the deployment guard until the full post-reboot acceptance profile passes.
