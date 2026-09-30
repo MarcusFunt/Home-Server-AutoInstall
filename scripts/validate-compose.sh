@@ -3,7 +3,7 @@ set -euo pipefail
 
 mapfile -d '' compose_files < <(find stacks -type f \( -name compose.yaml -o -name compose.yml -o -name docker-compose.yaml -o -name docker-compose.yml \) -print0)
 
-if (${#compose_files[@]} -eq 0); then
+if (( ${#compose_files[@]} == 0 )); then
   printf '%s\n' 'SKIP: no Compose projects exist yet.'
   exit 0
 fi
