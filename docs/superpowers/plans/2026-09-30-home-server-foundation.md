@@ -147,7 +147,7 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - Generate and display a random, DNS-safe hostname; save a local build receipt with the hostname, ISO checksum, selected disk policy, and USB target, but no secrets.
 - Ask for the USB device by model/capacity and require exact confirmation before overwrite; never guess the removable target.
 - Default disk policy: user confirms on the laptop that the sole eligible internal system disk may be erased. At install time, exclude the installer USB and continue only if exactly one eligible target matches. If there are multiple internal drives, the user can disconnect non-target drives before boot or rebuild with an exact stable ID; the installer must otherwise halt without partitioning.
-- Generate the account password hash locally. If Wi-Fi is selected, place its credentials only in the private rendered payload. If a Tailscale auth key is supplied, include a one-off time-limited key only; never include a reusable auth key, API token, age private key, or SSH private key.
+- Generate the account password hash locally. If Wi-Fi is selected, place its credentials only in the private rendered payload. If a Tailscale auth key is supplied, place a one-off time-limited key in a separate root-only USB sidecar file, not in Autoinstall YAML or commands that may be logged. Never include a reusable auth key, API token, age private key, or SSH private key.
 - Keep generated images, rendered seeds, provisioning secrets, and logs out of Git. Tell the user to retain physical control of the USB until the single-use enrollment key has been consumed.
 
 **Verification:**
@@ -204,12 +204,13 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - The report records detected facts and marks unavailable values as unknown; it never invents a value.
 
 **Work:**
-- Copy the first-boot bundle and pre-rendered non-secret configuration from the USB into /opt/home-server during installation.
+- Copy the first-boot bundle and pre-rendered base configuration from the USB into /opt/home-server during installation. Keep the Tailscale key in a separate root-only sidecar, not in the saved Autoinstall file.
 - Start automatically after networking is online. Collect DMI motherboard/model and BIOS version; CPU; RAM; PCI GPU identity; disk model, serial, capacity and transport; SMART/NVMe health where supported; NIC model/MAC/interface; OS version; routes; DNS; and Secure Boot state where available.
-- Run the bundled, pinned Ansible configuration locally using the laptop-generated host variables. Do not prompt for values on the server; do not repartition or format disks from this service.
-- Retrieve the short-lived Tailscale enrollment secret from the protected seed, enroll the host, then delete its staged copy and redact task output. Preserve the resulting node identity so the always-on device reconnects after reboot.
+- Run a narrow first-install bootstrap playbook locally using the laptop-generated host variables. This path configures only the base host and does not bypass the separate guard on ordinary production deployments. Do not prompt for values on the server; do not repartition or format disks from this service.
+- Read the short-lived Tailscale enrollment secret from a separate root-only USB sidecar file, enroll the host, then remove the staged copy and redact task output. Do not place the key in cloud-init or installer logs. Preserve the resulting node identity so the always-on device reconnects after reboot.
 - Disable sleep/suspend and install the selected standard desktop/RDP packages as part of the automated host configuration.
 - Store detailed inventory locally with root-only permissions. Do not auto-upload or commit serials, MACs, or IPs.
+- After network setup, inspect installer/cloud-init caches and logs for rendered secrets; restrict or remove temporary seed copies when safe, while retaining only the root-only network configuration needed for connectivity.
 - If first-boot configuration fails, stop dependent steps and leave a clear, sanitized status on the console and local log. Never fall back to asking setup questions.
 
 **Verification:**
@@ -227,15 +228,16 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - Modify: ansible/playbooks/site.yml
 - Modify: ansible/inventory/hosts.yml
 - Modify: ansible/group_vars/all.yml
+- Create: ansible/playbooks/bootstrap.yml
 - Create: ansible/roles/preflight/
 - Create: ansible/roles/base/
 - Create: ansible/roles/storage/
 - Create: ansible/roles/access/
 
 **Interfaces:**
-- Preflight consumes the local inventory report and laptop-generated host variables from the protected USB payload; any host-specific overlay is rendered locally and remains ignored/untracked.
-- The site playbook runs read-only preflight before any mutating role.
-- deployment_ready stays false until final acceptance.
+- The bootstrap playbook consumes the local inventory report and laptop-generated host variables from the private USB payload; any host-specific overlay is rendered locally and remains ignored/untracked.
+- The bootstrap path runs read-only preflight before mutating base-host roles. It does not deploy production Compose stacks.
+- The ordinary deploy command remains blocked and deployment_ready stays false until final acceptance.
 
 **Work:**
 - Reject the reserved 192.0.2.10 address, placeholder account/host values, unexpected Ubuntu release, missing disk-policy attestation, and absent recovery access.
@@ -344,7 +346,7 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - Store only a locally generated password hash in Autoinstall. Wi-Fi credentials appear in the USB payload only if Wi-Fi is selected and are written root-only on the installed host.
 - Treat the USB as a secret-bearing device while it contains a Tailscale one-off auth key. Keep physical control until the key is consumed; do not rely on flash deletion as the sole revocation mechanism.
 - Prefer one-off Tailscale auth keys. If a laptop-side OAuth client is used to mint one, store its restricted credential only in the laptop's approved secret store and never copy it to the USB.
-- Delete transient plaintext files and local staging copies after the USB is built. Keep the encrypted provisioning USB or its recovery materials separate from the public repo.
+- Delete transient plaintext files and local staging copies after the USB is built. Keep the generated, secret-bearing provisioning USB under physical control and separate from the public repo.
 - Generate the age key on a trusted workstation and keep two independent recovery copies outside the server and Git when encrypted application secrets are later introduced.
 - Test encrypt/decrypt/re-encrypt from a second trusted machine before committing encrypted service secrets.
 
@@ -496,7 +498,7 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - Add deployment preflight for the generated host identity, local inventory, laptop-generated configuration receipt, non-placeholder values, required secrets, clean repo, and Ansible check/diff.
 - Reboot with local console recovery available; verify a second remote Tailscale session and RDP session before closing the original path.
 - Restore a real snapshot to temporary storage. Rebuild on a spare disk if available and document manual steps.
-- Only after all criteria pass, change deployment_ready in a separate reviewed change and remove the scaffold refusal in a separate reviewed change.
+- Only after all criteria pass, change deployment_ready in a separate reviewed change and remove the refusal from the ordinary production deploy path. The restricted first-install bootstrap remains available for rebuilding a host.
 
 **Verification:**
 - Run make check and the full host profile.
@@ -516,5 +518,5 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 6. Do not approve the desktop/workload stack until combined use fits the 8 GiB RAM budget without OOM kills.
 7. Do not migrate production data until off-server restore is proven.
 8. Do not remove the deployment guard until the full post-reboot acceptance profile passes.
-9. The success path must need no server-side configuration answers: boot the USB, let installation/provisioning finish, and remove the USB when instructed by the completion message.
+9. The success path must need no server-side configuration answers: select the USB from the firmware one-time boot menu if needed, then let installation/provisioning finish. Do not change persistent boot order to prefer USB; verify reboot returns to the installed system. Remove the USB after setup is confirmed.
 10. Use existing Ubuntu desktop packages and upstream xrdp/xorgxrdp; do not create a custom desktop environment.
