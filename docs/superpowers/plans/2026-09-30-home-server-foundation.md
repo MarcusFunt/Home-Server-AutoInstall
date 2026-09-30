@@ -221,64 +221,6 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 
 **Done when:** A first boot automatically records inventory and configures the host from the laptop-prepared bundle with no interactive setup command.
 
-## Task 4: Use Autoinstall screens for the questions that need a person
-
-**Files:**
-- Modify: autoinstall/user-data.template
-- Modify: autoinstall/validate.sh
-- Modify: autoinstall/README.md
-- Create: tests/autoinstall/ interactive-flow fixtures
-
-**Work:**
-- Use Ubuntu Autoinstall interactive sections for storage, identity, and network so the installer pauses on the target machine for the remaining choices. Canonical's reference documents interactive-sections and identifies storage, identity, and network as sections that can be interactive: https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
-- Keep the generated hostname as the displayed identity default; allow the user to review it at the console without collecting it in advance.
-- Make wired Ethernet DHCP the default. If the user chooses wireless, let the target-side network screen request the SSID and password; do not bake those into the committed template.
-- Ask the user to choose and confirm the installation disk on the physical machine. Show enough information to distinguish drives; if two candidates are ambiguous, stop and provide a serial/model listing rather than guess.
-- Ask for the Linux user and password on the local installer UI. Do not print, log, or commit the password. Test the exact current Subiquity flow to ensure credentials are not embedded in the USB seed.
-- Install the OpenSSH server. If the user supplies a public SSH key, add only that public key; otherwise keep Tailscale SSH as the remote CLI path.
-- Install only the minimal Ubuntu Server base. Install host services, desktop, and GPU software later through Ansible.
-- If the current release's UI cannot safely collect a needed value, make the installer abort with a clear instruction; do not silently switch to unattended defaults.
-
-**Verification:**
-- Validate the generated Autoinstall document against the actual 26.04 installer schema.
-- Test in a VM with one disk and with multiple disks. Verify storage requires an explicit choice and no layout silently selects the largest disk.
-- Test wired DHCP and the optional Wi-Fi path on supported hardware; confirm the saved host network config works after reboot.
-- Confirm identity prompts use the generated hostname default and accept local credentials without leaving them in tracked or USB seed files.
-- Verify the installer reaches a local SSH-capable Ubuntu Server after reboot.
-
-**Done when:** The USB boot flow asks only for installation-time choices and cannot erase a disk by default.
-
-## Task 5: Collect machine facts and run a simple local bootstrap
-
-**Files:**
-- Create: scripts/collect-inventory.sh
-- Create: scripts/bootstrap-host.sh
-- Create: tests/inventory/
-- Modify: .gitignore
-- Modify: docs/hardware-inventory.md
-- Modify: docs/recovery.md
-
-**Interface:**
-- Command: sudo /opt/home-server/scripts/bootstrap-host.sh
-- Output: /var/lib/home-server-setup/inventory.json and /var/lib/home-server-setup/inventory.md
-- The report records detected facts and marks unavailable values as unknown; it never invents a value.
-
-**Work:**
-- Copy the repository's bootstrap files to /opt/home-server during installation so the first setup does not depend on cloning Git before network access is working.
-- Collect DMI motherboard/model and BIOS version; CPU model; RAM; PCI GPU identity; disk model, serial, capacity and transport; SMART/NVMe health where supported; NIC model, MAC and interface; OS version; active IP routes; DNS; and Secure Boot state where available.
-- Mark BIOS power-restore setting as a human check unless reliable firmware reporting is available. Ask the user to confirm the setting and disable sleep/suspend through configuration later.
-- Store the detailed report locally with root-only access. Never auto-upload or commit it to public Git.
-- Have the bootstrap command show a concise summary and prompt only for missing choices that block the next step. Do not ask for values already detected or confirmed.
-- Keep bootstrap safe to rerun: detect completed steps, explain what will change, and do not reinstall or repartition disks.
-
-**Verification:**
-- Run collector tests against fixtures with missing DMI data, multiple drives, missing SMART tools, and multiple NICs.
-- Confirm serials and MACs appear only in the local report, not in terminal logs copied to Git or public CI.
-- Run bootstrap twice; the second run must identify completed steps and avoid duplicate users, keys, services, or configuration.
-- Confirm the script does not attempt to write to a disk.
-
-**Done when:** One command on the installed server produces a useful local inventory and asks only for facts that cannot be reliably discovered.
-
 ## Task 6: Implement Ansible preflight and base host configuration
 
 **Files:**
