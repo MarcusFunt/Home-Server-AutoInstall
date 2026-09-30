@@ -39,7 +39,7 @@ The laptop builder owns all choices that can be made before the server boots. Ke
 | SSH | Optionally import a public key from the laptop. Never copy a private key. Tailscale SSH remains the alternate CLI path. |
 | Locale/timezone | Default to the user's known locale and Europe/Copenhagen; expose these as optional wizard fields. |
 | USB device | List removable drives and require exact target confirmation before writing. |
-| Future services | Do not ask for backup destination or production-service credentials during the base USB flow; collect them when those services are implemented. |
+| Service profile | For every service enabled in the build profile, ask for its required choices and credentials on the laptop before writing USB. Keep services with unmet backup/restore prerequisites disabled; never defer their setup prompts to the server. |
 
 Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventory, NICs, routes, and Secure Boot—are detected silently on first boot. They are not missing configuration questions. Firmware settings that cannot be queried are reported as a commissioning item; they do not trigger an installer prompt.
 
@@ -140,15 +140,15 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - Create: tests/autoinstall/
 
 **Work:**
-- Provide one guided laptop flow: check dependencies, download or select the official Ubuntu Server 26.04 ISO, verify its published checksum, ask only for required values, render the install seed and first-boot configuration, and write one USB.
-- Keep the ordinary path fast: hostname is generated; timezone is prefilled; wired Ethernet/DHCP and the guarded single-internal-disk policy are defaults. Ask for an admin username/password and show which optional inputs are needed only when selected.
-- Include the repository's pinned Ansible dependencies or a reproducible way to obtain them so first boot is independent of Git credentials. Online package/dependency downloads may occur during first boot over Ethernet.
+- Provide one guided laptop flow: check dependencies, download or select the official Ubuntu Server 26.04 ISO, verify its published checksum, choose the host/service profile, ask for every missing value required by that profile, render the install seed and first-boot configuration, and write one USB.
+- Keep the ordinary path fast: hostname is generated; timezone is prefilled; wired Ethernet/DHCP and the guarded single-internal-disk policy are defaults. Ask for an admin username/password and only the inputs required by selected optional modules. Do not emit a partial profile that will prompt on the server.
+- Include all repository configuration and pinned Ansible dependencies required by the selected build profile, or a reproducible way to obtain them without Git credentials. Online package/dependency downloads may occur during first boot over Ethernet; configuration values themselves are prepared on the laptop.
 - Use an existing, maintained USB/image-writing tool or library where practical. Do not implement an ISO filesystem writer or installer from scratch without a demonstrated need.
 - Generate and display a random, DNS-safe hostname; save a local build receipt with the hostname, ISO checksum, selected disk policy, and USB target, but no secrets.
 - Ask for the USB device by model/capacity and require exact confirmation before overwrite; never guess the removable target.
 - Default disk policy: user confirms on the laptop that the sole eligible internal system disk may be erased. At install time, exclude the installer USB and continue only if exactly one eligible target matches. If there are multiple internal drives, the user can disconnect non-target drives before boot or rebuild with an exact stable ID; the installer must otherwise halt without partitioning.
 - Generate the account password hash locally. If Wi-Fi is selected, place its credentials only in the private rendered payload. If a Tailscale auth key is supplied, place a one-off time-limited key in a separate root-only USB sidecar file, not in Autoinstall YAML or commands that may be logged. Never include a reusable auth key, API token, age private key, or SSH private key.
-- Keep generated images, rendered seeds, provisioning secrets, and logs out of Git. Tell the user to retain physical control of the USB until the single-use enrollment key has been consumed.
+- Keep generated images, rendered seeds, provisioning secrets, and logs out of Git. Decrypt selected SOPS files on the laptop immediately before rendering the private USB payload; never copy the age private key to the USB. Tell the user to retain physical control of the USB until the single-use enrollment key has been consumed.
 
 **Verification:**
 - Verify the ISO hash against Canonical's published checksum.
@@ -204,7 +204,7 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - The report records detected facts and marks unavailable values as unknown; it never invents a value.
 
 **Work:**
-- Copy the first-boot bundle and pre-rendered base configuration from the USB into /opt/home-server during installation. Keep the Tailscale key in a separate root-only sidecar, not in the saved Autoinstall file.
+- Copy the first-boot bundle and all selected, pre-rendered configuration from the USB into /opt/home-server during installation. Keep the Tailscale key in a separate root-only sidecar, not in the saved Autoinstall file. Apply only roles allowed by the bootstrap/production safety gates.
 - Start automatically after networking is online. Collect DMI motherboard/model and BIOS version; CPU; RAM; PCI GPU identity; disk model, serial, capacity and transport; SMART/NVMe health where supported; NIC model/MAC/interface; OS version; routes; DNS; and Secure Boot state where available.
 - Run a narrow first-install bootstrap playbook locally using the laptop-generated host variables. This path configures only the base host and does not bypass the separate guard on ordinary production deployments. Do not prompt for values on the server; do not repartition or format disks from this service.
 - Read the short-lived Tailscale enrollment secret from a separate root-only USB sidecar file, enroll the host, then remove the staged copy and redact task output. Do not place the key in cloud-init or installer logs. Preserve the resulting node identity so the always-on device reconnects after reboot.
@@ -341,7 +341,7 @@ Machine facts that only exist on the target—BIOS, CPU, RAM, GPU, disk inventor
 - Create: local ignored age-key setup instructions
 
 **Work:**
-- Keep persistent application/backup secrets on the later service setup path; they are not needed to install the base host.
+- Keep persistent application/backup secrets out of the base-only profile. When a service is selected for installation, decrypt its SOPS values on the laptop and render them into the private USB payload; never ask for them at the server.
 - Never place passwords, Wi-Fi credentials, OAuth secrets, private keys, or rendered user-data in Git or builder logs.
 - Store only a locally generated password hash in Autoinstall. Wi-Fi credentials appear in the USB payload only if Wi-Fi is selected and are written root-only on the installed host.
 - Treat the USB as a secret-bearing device while it contains a Tailscale one-off auth key. Keep physical control until the key is consumed; do not rely on flash deletion as the sole revocation mechanism.
