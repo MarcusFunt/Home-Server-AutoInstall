@@ -1,0 +1,50 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install validation tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --requirement requirements-dev.txt
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+
+      - name: Install pinned Ansible dependencies
+        run: |
+          ansible-galaxy role install --role-file ansible/requirements.yml --roles-path ansible/vendor/roles
+          ansible-galaxy collection install --requirements-file ansible/requirements.yml --collections-path ansible/vendor/collections
+
+      - name: Lint YAML, Ansible, and shell
+        run: |
+          yamllint --config-file .yamllint .
+          ansible-lint ansible/playbooks/site.yml
+          shellcheck scripts/*.sh
+
+      - name: Check Ansible syntax
+        run: ansible-playbook --syntax-check --inventory ansible/inventory/hosts.yml ansible/playbooks/site.yml
+
+      - name: Check Compose files when present
+        run: bash scripts/validate-compose.sh
+
+      - name: Check tracked files for plaintext secret markers
+        run: bash scripts/check-secrets.sh

@@ -1,0 +1,10 @@
+---
+- name: Guarded home-server configuration entry point
+  hosts: home_servers
+  gather_facts: false
+  tasks:
+    - name: Refuse to apply the scaffold
+      ansible.builtin.fail:
+        msg: >-
+          This repository is a scaffold. Implement and review provisioning roles, replace reserved inventory values,
+          complete secrets and hardware checks, then remove this guard as a separate reviewed change.
