@@ -1,0 +1,11 @@
+---
+# Non-secret defaults. Keep false until commissioning is complete.
+deployment_ready: false
+server_timezone: Europe/Copenhagen
+server_expected_distribution: Ubuntu
+server_expected_version: "26.04"
+server_data_root: /srv/data
+server_stacks_root: /srv/stacks
+server_backups_root: /srv/backups
+server_cache_root: /srv/cache
+server_scratch_root: /srv/scratch

@@ -1,0 +1,19 @@
+---
+observed_at: "2026-09-30"
+status: candidate_releases_not_tested_on_target_host
+releases:
+  ansible:
+    geerlingguy_docker_role: "7.4.7"
+    artis3n_tailscale_collection: "1.2.1"
+    community_sops_collection: "2.4.0"
+  applications:
+    arcane: "2.14.0"
+    beszel: "0.20.0"
+    uptime_kuma: "2.5.5"
+sources:
+  geerlingguy_docker_role: https://github.com/geerlingguy/ansible-role-docker
+  artis3n_tailscale_collection: https://github.com/artis3n/ansible-collection-tailscale/releases/tag/v1.2.1
+  community_sops_collection: https://github.com/ansible-collections/community.sops/releases/tag/2.4.0
+  arcane: https://github.com/getarcaneapp/arcane/releases/tag/v2.14.0
+  beszel: https://github.com/henrygd/beszel/releases/tag/v0.20.0
+  uptime_kuma: https://github.com/louislam/uptime-kuma/releases/tag/2.5.5
