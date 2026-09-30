@@ -35,8 +35,8 @@ optional_check() {
 }
 
 is_ubuntu_2604() {
-  . /etc/os-release
-  [[ "$ID" == ubuntu && "$VERSION_ID" == 26.04 ]]
+  grep -Eq '^ID="?ubuntu"?$' /etc/os-release &&
+    grep -Eq '^VERSION_ID="?26\.04"?$' /etc/os-release
 }
 
 is_time_synchronized() {

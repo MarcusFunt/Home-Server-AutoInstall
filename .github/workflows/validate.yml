@@ -39,7 +39,8 @@ jobs:
           git ls-files -z -- \
             '*.yaml' \
             '*.yml' \
-            '*.yaml.example' | xargs -0 yamllint --config-file .yamllint
+            '*.yaml.example' |
+            xargs -0 yamllint --config-file .yamllint
           ansible-lint ansible/playbooks/site.yml
           shellcheck scripts/*.sh
 
