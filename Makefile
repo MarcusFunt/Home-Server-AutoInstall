@@ -3,7 +3,7 @@
 check: lint syntax compose-config secrets-check
 
 lint:
-	yamllint -c .yamllint .
+	git ls-files -z -- '*.yaml' '*.yml' '*.yaml.example' | xargs -0 yamllint -c .yamllint
 	ansible-lint ansible/playbooks/site.yml
 	shellcheck scripts/*.sh
 
